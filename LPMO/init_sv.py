@@ -42,8 +42,10 @@ def plot_harmonics(times, h_class,**kwargs):
     num_harms=h_class.num_harmonics
     for i in range(0, num_harms):
         plt.subplot(num_harms, 1,i+1)
+        q=1.2
         for plot_name in label_list:
-            plt.plot(kwargs["xaxis"], np.real(harm_dict[plot_name][i,:]), label=plot_name)
+            q-=0.2
+            plt.plot(kwargs["xaxis"], np.real(harm_dict[plot_name][i,:]), label=plot_name, alpha=q)
 
         if i==0:
             plt.legend()
@@ -81,9 +83,11 @@ for i in range(1, 3):
         "original_gamma":1e-8,        # (surface coverage per unit area)
         'k_0': 10000, #(reaction rate s-1)
         'alpha': 0.5,
-        "E0_mean":0.2,
-        "E0_std": 0.09,
+        "E0_mean":0.1,
+        "E0_std": 0.01,
         "E0_skew":0.2,
+        "k0_shape":0.25,
+        "k0_scale":100,
         "cap_phase":3*math.pi/2,
         "alpha_mean":0.5,
         "alpha_std":1e-3,
@@ -112,7 +116,7 @@ for i in range(1, 3):
     for init_harm in range(2, 9):
         other_values={
             "filter_val": 0.5,
-            "harmonic_range":list(range(init_harm,9,1)),
+            "harmonic_range":list(range(init_harm,11,1)),
             "experiment_time": time_results1,
             "experiment_current": current_results1,
             "experiment_voltage":voltage_results1,
@@ -127,10 +131,10 @@ for i in range(1, 3):
             'CdlE2': [-0.05,0.05],#0.000245772700637,
             'CdlE3': [-0.01,0.01],#1.10053945995e-06,
             'gamma': [0.01*param_list["original_gamma"],100*param_list["original_gamma"]],
-            'k_0': [0.1, 1e3], #(reaction rate s-1)
+            'k_0': [1e-5, 1e3], #(reaction rate s-1)
             'alpha': [0.4, 0.6],
             "cap_phase":[math.pi/2, 2*math.pi],
-            "E0_mean":[0.1, 0.4],
+            "E0_mean":[0.05, 0.2],
             "E0_std": [1e-4,  0.2],
             "E0_skew": [-10, 10],
             "alpha_mean":[0.4, 0.65],
@@ -166,14 +170,14 @@ for i in range(1, 3):
         LPMO.simulation_options["likelihood"]="fourier"
         LPMO.simulation_options["test"]=False
         LPMO.simulation_options["adaptive_ru"]=False
-        LPMO.simulation_options["dispersion_bins"]=[8]
-        LPMO.simulation_options["GH_quadrature"]=True
+        LPMO.simulation_options["dispersion_bins"]=[16]
+        LPMO.simulation_options["GH_quadrature"]=False
         LPMO.simulation_options["numerical_method"]="Brent minimisation"
         ts_results_optim_list=["E_0","k_0","Ru","Cdl", "CdlE1", "CdlE2","gamma","omega","cap_phase","phase", "alpha"]
         LPMO.def_optim_list(["E_0","k_0","Ru","Cdl", "CdlE1", "CdlE2","gamma","omega","cap_phase","phase", "alpha"])
         orig_cmaes_results=[0.1323344839793261, 8.439305794165604, 32.129571420325696, 0.0038661162192220517, -0.03397713786397259, 0.0026026961458140083, 4.403070990011245e-09, 9.015215428806911, 4.866870933553302, 5.331933302017616, 0.5999999979234201]
         #cmaes_results=[0.23449030178378097, 17.309449466321066, 106.96763508342268, 0.04212514631028971, -0.09999998841572955, 5.998251906128016e-06, 4.378848258266178e-08, 9.017197576723236, 6.283185304254533, 5.1973311117845435, 0.5999999934553761]
-        cmaes_time=LPMO.test_vals(cmaes_results, likelihood="timeseries", test=False)
+        cmaes_time=LPMO.test_vals(orig_cmaes_results, likelihood="timeseries", test=False)
 
         plt.plot(voltage_results, cmaes_time, label="Simulation")
         plt.plot(voltage_results, current_results, alpha=0.5, label="Experiment")
@@ -197,6 +201,12 @@ for i in range(1, 3):
         for param in range(0, len(cdl_list)):
             LPMO.dim_dict[cdl_list[param]]=cdl_vals[param]
         LPMO.def_optim_list(["E_0","k_0","Ru","gamma","omega","cap_phase","phase", "alpha"])
+        abs_vals=[0.12267918433476588, 0.10000001217777187, 110.7217695311136, 6.436119838423983e-09, 9.015056846897231, 2.300030530938936, 5.0949078241522905, 0.599999988589617]
+        abs_vals=[0.1942552896092487, 1.6396496330592818, 53.46929098380687, 2.745723906710015e-09, 9.015061323815008, 4.022601263585928, 3.2663583722003433, 0.4804444355077191]
+
+        cmaes_abs=LPMO.test_vals(abs_vals, "timeseries")
+        plot_harmonics(LPMO.t_nondim(time_results), h_class, abs_time_series=LPMO.i_nondim(cmaes_abs), data_time_series=LPMO.i_nondim(current_results), xaxis=LPMO.e_nondim(voltage_results))
+        LPMO.def_optim_list(["E_0","k0_shape", "k0_scale","Ru","gamma","omega","cap_phase","phase", "alpha"])
         true_data=current_results#LPMO.add_noise(cmaes_time, 0.0*max(cmaes_time))
         exp_harms=h_class.generate_harmonics(LPMO.t_nondim(time_results), LPMO.i_nondim(true_data))
         fourier_arg=LPMO.top_hat_filter(true_data)
@@ -211,9 +221,9 @@ for i in range(1, 3):
         num_runs=5
         for i in range(0, num_runs):
             x0=abs(np.random.rand(LPMO.n_parameters()))
-            starting_point=[cmaes_results[ts_results_optim_list.index((param))] for param in LPMO.optim_list]
+            starting_point=[orig_cmaes_results[ts_results_optim_list.index((param))] if param in ts_results_optim_list else LPMO.dim_dict[param] for param in LPMO.optim_list]
             print(starting_point)
-            x0=LPMO.change_norm_group(starting_point, "norm")
+            #x0=LPMO.change_norm_group(starting_point, "norm")
             print(len(x0), cmaes_problem.n_parameters(), CMAES_boundaries.n_parameters(), score.n_parameters())
             cmaes_fitting=pints.OptimisationController(score, x0, sigma0=None, boundaries=CMAES_boundaries, method=pints.CMAES)
             cmaes_fitting.set_max_unchanged_iterations(iterations=200, threshold=1e-7)
@@ -233,6 +243,7 @@ for i in range(1, 3):
                 plt.plot(voltage_results, syn_harms[i,:])
                 plt.plot(voltage_results, exp_harms[i,:], alpha=0.7)
             plt.show()
+            plot_harmonics(LPMO.t_nondim(time_results), h_class, abs_time_series=LPMO.i_nondim(cmaes_time), data_time_series=LPMO.i_nondim(current_results), func=abs, xaxis=LPMO.e_nondim(voltage_results))
             plt.plot(LPMO.top_hat_filter(cmaes_time))
             plt.plot(fourier_arg, alpha=0.7)
             plt.show()
