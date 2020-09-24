@@ -109,25 +109,25 @@ for i in range(1, 3):
         "label": "MCMC",
         "optim_list":[]
     }
-    for init_harm in range(3, 7):
+    for init_harm in range(2, 9):
         other_values={
             "filter_val": 0.5,
             "harmonic_range":list(range(init_harm,9,1)),
             "experiment_time": time_results1,
             "experiment_current": current_results1,
             "experiment_voltage":voltage_results1,
-            "bounds_val":20000,
+            "bounds_val":200000,
         }
         param_bounds={
             'E_0':[param_list["E_start"], param_list["E_reverse"]],
             'omega':[0.99*param_list['omega'],1.01*param_list['omega']],#8.88480830076,  #    (frequency Hz)
-            'Ru': [0, 1e5],  #     (uncompensated resistance ohms)
+            'Ru': [0, 1e3],  #     (uncompensated resistance ohms)
             'Cdl': [0,1e-1], #(capacitance parameters)
             'CdlE1': [-0.5,0.5],#0.000653657774506,
             'CdlE2': [-0.05,0.05],#0.000245772700637,
             'CdlE3': [-0.01,0.01],#1.10053945995e-06,
             'gamma': [0.01*param_list["original_gamma"],100*param_list["original_gamma"]],
-            'k_0': [0.1, 1e4], #(reaction rate s-1)
+            'k_0': [0.1, 1e3], #(reaction rate s-1)
             'alpha': [0.4, 0.6],
             "cap_phase":[math.pi/2, 2*math.pi],
             "E0_mean":[0.1, 0.4],
@@ -163,14 +163,15 @@ for i in range(1, 3):
         exp_Y=h_class.exposed_Y
         exp_f=h_class.exposed_f
         LPMO.simulation_options["label"]="cmaes"
-        LPMO.simulation_options["likelihood"]="timeseries"
+        LPMO.simulation_options["likelihood"]="fourier"
         LPMO.simulation_options["test"]=False
         LPMO.simulation_options["adaptive_ru"]=False
         LPMO.simulation_options["dispersion_bins"]=[8]
         LPMO.simulation_options["GH_quadrature"]=True
         LPMO.simulation_options["numerical_method"]="Brent minimisation"
+        ts_results_optim_list=["E_0","k_0","Ru","Cdl", "CdlE1", "CdlE2","gamma","omega","cap_phase","phase", "alpha"]
         LPMO.def_optim_list(["E_0","k_0","Ru","Cdl", "CdlE1", "CdlE2","gamma","omega","cap_phase","phase", "alpha"])
-        cmaes_results=[0.1323344839793261, 8.439305794165604, 32.129571420325696, 0.0038661162192220517, -0.03397713786397259, 0.0026026961458140083, 4.403070990011245e-09, 9.015215428806911, 4.866870933553302, 5.331933302017616, 0.5999999979234201]
+        orig_cmaes_results=[0.1323344839793261, 8.439305794165604, 32.129571420325696, 0.0038661162192220517, -0.03397713786397259, 0.0026026961458140083, 4.403070990011245e-09, 9.015215428806911, 4.866870933553302, 5.331933302017616, 0.5999999979234201]
         #cmaes_results=[0.23449030178378097, 17.309449466321066, 106.96763508342268, 0.04212514631028971, -0.09999998841572955, 5.998251906128016e-06, 4.378848258266178e-08, 9.017197576723236, 6.283185304254533, 5.1973311117845435, 0.5999999934553761]
         cmaes_time=LPMO.test_vals(cmaes_results, likelihood="timeseries", test=False)
 
@@ -189,22 +190,16 @@ for i in range(1, 3):
             if i==0:
                 plt.legend()
         plt.show()
-        cdl_list=["Ru","Cdl", "CdlE1", "CdlE2", "cap_phase", "omega"]
+        cdl_list=["Cdl", "CdlE1", "CdlE2"]
         cdl_vals=[28.978167670288933, 0.0004491416710415779, -0.004443754158632449, -7.634530189787325e-06, 4.762473383666572]
         cdl_vals=[62.227100180103584, 0.019162362426177606, -0.04201533559689572, -2.7157545788504545e-05, 5.584201578869924, 9.015078492369913]
-
+        cdl_vals=[0.0038661162192220517, -0.03397713786397259, 0.0026026961458140083]
         for param in range(0, len(cdl_list)):
             LPMO.dim_dict[cdl_list[param]]=cdl_vals[param]
-        LPMO.def_optim_list(["E_0","k_0","Ru","Cdl", "CdlE1", "CdlE2","gamma","omega","cap_phase","phase", "alpha"])
+        LPMO.def_optim_list(["E_0","k_0","Ru","gamma","omega","cap_phase","phase", "alpha"])
         true_data=current_results#LPMO.add_noise(cmaes_time, 0.0*max(cmaes_time))
-        plt.plot(time_results, true_data)
-        plt.plot(time_results, cmaes_time)
-        plt.show()
         exp_harms=h_class.generate_harmonics(LPMO.t_nondim(time_results), LPMO.i_nondim(true_data))
         fourier_arg=LPMO.top_hat_filter(true_data)
-        plt.plot(fourier_arg)
-        plt.plot(LPMO.top_hat_filter(cmaes_time))
-        plt.show()
         plot_harmonics(LPMO.t_nondim(time_results), h_class, noisy_time_series=true_data, base_time_series=cmaes_time, xaxis=voltage_results)
         if LPMO.simulation_options["likelihood"]=="timeseries":
             cmaes_problem=pints.SingleOutputProblem(LPMO, time_results, true_data)
@@ -216,10 +211,13 @@ for i in range(1, 3):
         num_runs=5
         for i in range(0, num_runs):
             x0=abs(np.random.rand(LPMO.n_parameters()))
+            starting_point=[cmaes_results[ts_results_optim_list.index((param))] for param in LPMO.optim_list]
+            print(starting_point)
+            x0=LPMO.change_norm_group(starting_point, "norm")
             print(len(x0), cmaes_problem.n_parameters(), CMAES_boundaries.n_parameters(), score.n_parameters())
             cmaes_fitting=pints.OptimisationController(score, x0, sigma0=None, boundaries=CMAES_boundaries, method=pints.CMAES)
             cmaes_fitting.set_max_unchanged_iterations(iterations=200, threshold=1e-7)
-            cmaes_fitting.set_parallel(True)#not LPMO.simulation_options["test"]
+            cmaes_fitting.set_parallel(not LPMO.simulation_options["test"])#
             found_parameters, found_value=cmaes_fitting.run()
             print(found_parameters)
             cmaes_results=LPMO.change_norm_group(found_parameters[:], "un_norm")
